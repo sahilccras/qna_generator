@@ -106,6 +106,10 @@ def save_row(idx: int, payload: Dict[str, Any]):
 def download_csv():
     return FileResponse(CSV_PATH, media_type="text/csv", filename=os.path.basename(CSV_PATH))
 
+@app.get("/data")
+def get_all_data():
+    return storage.list_all_rows()
+
 @app.get("/health")
 def health():
     return {"status": "ok"}

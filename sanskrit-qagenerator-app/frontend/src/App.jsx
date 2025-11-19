@@ -2,22 +2,30 @@ import React, { useEffect, useState } from "react";
 import Sidebar from "./components/Sidebar";
 import ShlokaEditor from "./components/ShlokaEditor";
 import BatchProcessor from "./components/BatchProcessor"; // Add this import
-import { listRows, uploadCSV, downloadCSV } from "./api";
+import { listRows, uploadCSV, downloadCSV, getAllData } from "./api";
 
 export default function App() {
   const [rows, setRows] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [query, setQuery] = useState("");
-  const [showBatchProcessor, setShowBatchProcessor] = useState(false); // Add this state
+  const [showBatchProcessor, setShowBatchProcessor] = useState(false);
 
   useEffect(() => {
     fetchRows();
-  }, []);
+  }, [query]);
 
   async function fetchRows() {
-    const data = await listRows(0, 100, query);
+    const data = await listRows(0, 1000, query); // Increased limit
     setRows(data);
-    if (data.length > 0 && selectedId === null) setSelectedId(data[0].id);
+    if (data.length > 0 && selectedId === null) {
+      setSelectedId(data[0].id);
+    } else if (data.length === 0) {
+      setSelectedId(null);
+    }
+  }
+
+  function handleQueryChange(newQuery) {
+    setQuery(newQuery);
   }
 
   function handleSelect(id) {
@@ -42,6 +50,32 @@ export default function App() {
     a.remove();
   }
 
+  async function handleExport(format) {
+    const data = await getAllData(); // This will be a new API endpoint
+    let content;
+    let filename;
+
+    if (format === "csv") {
+      handleDownload();
+      return;
+    } else if (format === "json") {
+      content = JSON.stringify(data, null, 2);
+      filename = "data.json";
+    } else if (format === "jsonl") {
+      content = data.map(row => JSON.stringify(row)).join('\n');
+      filename = "data.jsonl";
+    }
+
+    const blob = new Blob([content], { type: "application/json" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
   const handleBatchComplete = () => {
     // Refresh the data when batch processing completes
     fetchRows();
@@ -56,7 +90,9 @@ export default function App() {
         onUpload={handleUpload}
         onRefresh={fetchRows}
         onDownload={handleDownload}
-        onShowBatchProcessor={() => setShowBatchProcessor(true)} // Add this prop
+        onShowBatchProcessor={() => setShowBatchProcessor(true)}
+        onExport={handleExport}
+        onQueryChange={handleQueryChange}
       />
       <div className="flex-1 p-6 overflow-auto">
         {showBatchProcessor ? (

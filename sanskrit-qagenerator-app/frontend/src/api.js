@@ -48,3 +48,8 @@ export async function getProcessStatus(processId) {
   const r = await axios.get(`${API_BASE}/process-status/${processId}`);
   return r.data;
 }
+
+export async function getAllData() {
+  const r = await axios.get(`${API_BASE}/data`);
+  return r.data;
+}
