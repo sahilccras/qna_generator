@@ -12,8 +12,7 @@ class CSVStorage:
 
     def _reload(self):
         if os.path.exists(self.csv_path):
-            # Read CSV and fill NaN values with empty strings
-            self.df = pd.read_csv(self.csv_path).fillna("")
+            self.df = pd.read_csv(self.csv_path, encoding='utf-8-sig').fillna("")
         else:
             self.df = pd.DataFrame()
 
@@ -111,7 +110,7 @@ class CSVStorage:
             self.df = self.df.fillna("")
 
             tmp = self.csv_path + ".tmp"
-            self.df.to_csv(tmp, index=False)
+            self.df.to_csv(tmp, index=False, encoding='utf-8-sig')
             os.replace(tmp, self.csv_path)
             return True
 

@@ -9,6 +9,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState(null);
   const [query, setQuery] = useState("");
   const [showBatchProcessor, setShowBatchProcessor] = useState(false);
+  const [autoProcessOnUpload, setAutoProcessOnUpload] = useState(false);
 
   useEffect(() => {
     fetchRows();
@@ -37,6 +38,9 @@ export default function App() {
     if (!file) return;
     await uploadCSV(file);
     await fetchRows();
+    if (autoProcessOnUpload) {
+      setShowBatchProcessor(true);
+    }
   }
 
   async function handleDownload() {
@@ -93,6 +97,7 @@ export default function App() {
         onShowBatchProcessor={() => setShowBatchProcessor(true)}
         onExport={handleExport}
         onQueryChange={handleQueryChange}
+        onAutoProcessChange={setAutoProcessOnUpload}
       />
       <div className="flex-1 p-6 overflow-auto">
         {showBatchProcessor ? (

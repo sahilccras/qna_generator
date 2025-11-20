@@ -55,7 +55,7 @@ def startup():
     if not os.path.exists(CSV_PATH):
         headers = storage.headers_for_qa_count(4)
         df = pd.DataFrame(columns=headers)
-        df.to_csv(CSV_PATH, index=False)
+        df.to_csv(CSV_PATH, index=False, encoding='utf-8-sig')
     storage.reload()
     logger.info("Startup complete. CSV path: %s", CSV_PATH)
 

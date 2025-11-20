@@ -10,10 +10,16 @@ export default function Sidebar({
   onShowBatchProcessor,
   onExport,
   onQueryChange,
+  onAutoProcessChange,
 }) {
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [filter, setFilter] = useState("");
+  const [autoProcess, setAutoProcess] = useState(false);
   const exportMenuRef = useRef(null);
+
+  useEffect(() => {
+    onAutoProcessChange(autoProcess);
+  }, [autoProcess, onAutoProcessChange]);
 
   // Debounce the query change
   useEffect(() => {
@@ -43,52 +49,66 @@ export default function Sidebar({
 
   return (
     <div className="w-96 bg-white border-r">
-      <div className="p-4 flex items-center justify-between border-b">
-        <h2 className="text-lg font-semibold">Shlokas</h2>
-        <div className="flex items-center gap-2">
-          <label className="bg-sky-600 text-white px-3 py-1 rounded cursor-pointer hover:bg-sky-700">
-            Upload
-            <input type="file" accept=".csv" className="hidden" onChange={onUpload} />
-          </label>
-          <button className="px-3 py-1 border rounded hover:bg-gray-50" onClick={onRefresh}>
-            Refresh
-          </button>
-          <div className="relative" ref={exportMenuRef}>
-            <button
-              className="px-3 py-1 border rounded hover:bg-gray-50 flex items-center gap-1"
-              onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
-            >
-              Export
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
+      <div className="p-4 border-b">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Shlokas</h2>
+          <div className="flex items-center gap-2">
+            <label className="bg-sky-600 text-white px-3 py-1 rounded cursor-pointer hover:bg-sky-700">
+              Upload
+              <input type="file" accept=".csv" className="hidden" onChange={onUpload} />
+            </label>
+            <button className="px-3 py-1 border rounded hover:bg-gray-50" onClick={onRefresh}>
+              Refresh
             </button>
-            {isExportMenuOpen && (
-              <div className="absolute right-0 mt-2 w-32 bg-white rounded-md shadow-lg border z-10">
-                <a
-                  href="#"
-                  onClick={() => handleExport("csv")}
-                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                >
-                  as CSV
-                </a>
-                <a
-                  href="#"
-                  onClick={() => handleExport("json")}
-                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                >
-                  as JSON
-                </a>
-                <a
-                  href="#"
-                  onClick={() => handleExport("jsonl")}
-                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                >
-                  as JSONL
-                </a>
-              </div>
-            )}
           </div>
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <input
+            id="autoProcess"
+            type="checkbox"
+            checked={autoProcess}
+            onChange={(e) => setAutoProcess(e.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500"
+          />
+          <label htmlFor="autoProcess" className="text-sm font-medium text-gray-700">
+            Auto-process on upload
+          </label>
+        </div>
+        <div className="relative" ref={exportMenuRef}>
+          <button
+            className="px-3 py-1 border rounded hover:bg-gray-50 flex items-center gap-1"
+            onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+          >
+            Export
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {isExportMenuOpen && (
+            <div className="absolute right-0 mt-2 w-32 bg-white rounded-md shadow-lg border z-10">
+              <a
+                href="#"
+                onClick={() => handleExport("csv")}
+                className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+              >
+                as CSV
+              </a>
+              <a
+                href="#"
+                onClick={() => handleExport("json")}
+                className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+              >
+                as JSON
+              </a>
+              <a
+                href="#"
+                onClick={() => handleExport("jsonl")}
+                className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+              >
+                as JSONL
+              </a>
+            </div>
+          )}
         </div>
       </div>
 
