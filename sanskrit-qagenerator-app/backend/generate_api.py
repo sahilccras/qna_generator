@@ -5,6 +5,7 @@ import random
 import logging
 import requests
 from typing import Dict, Any, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from requests.exceptions import ReadTimeout, RequestException
 
 # Configure logging
@@ -66,34 +67,32 @@ Translation (English):
 {english}
 
 Task:
-Generate exactly {n} distinct question-answer pairs for each language:
+Generate a single, distinct question-answer pair for each language:
 - English (q_en / a_en)
 - Hindi in Devanagari (q_hi / a_hi)
 - Sanskrit in Devanagari (q_sa / a_sa)
 
 Rules:
-- Questions must stand alone as independent knowledge questions.
+- The question must stand alone as an independent knowledge question.
 - You MUST use names and events normally, but NEVER reference or hint that they come from a text.
-- Answers must be concise (1-3 sentences) and based ONLY on the provided information.
+- The answer must be concise (1-3 sentences) and based ONLY on the provided information.
 - No external stories or commentary.
 
 Return ONLY valid JSON with this exact structure and no other text:
 
 {{
-  "q_en": ["question1", "question2", ...],
-  "a_en": ["answer1", "answer2", ...],
-  "q_hi": ["प्रश्न1", "प्रश्न2", ...],
-  "a_hi": ["उत्तर1", "उत्तर2", ...],
-  "q_sa": ["प्रश्न1", "प्रश्न2", ...],
-  "a_sa": ["उत्तर1", "उत्तर2", ...]
+  "q_en": ["question"],
+  "a_en": ["answer"],
+  "q_hi": ["प्रश्न"],
+  "a_hi": ["उत्तर"],
+  "q_sa": ["प्रश्न"],
+  "a_sa": ["उत्तर"]
 }}
+"""
 
-Generate exactly {n} pairs per language."""
-
-def build_prompt(sanskrit: str, english: str, n: int) -> str:
-    """Build the prompt for the LLM with proper formatting"""
-    logger.debug(f"Building prompt for shloka length: {len(sanskrit)}, translation length: {len(english)}, n: {n}")
-    return PROMPT_TEMPLATE.format(sanskrit=sanskrit.strip(), english=english.strip(), n=n)
+def build_prompt(sanskrit: str, english: str) -> str:
+    """Build the prompt for the LLM for a single Q&A pair."""
+    return PROMPT_TEMPLATE.format(sanskrit=sanskrit.strip(), english=english.strip())
 
 def _repair_incomplete_json(json_str: str) -> Optional[Dict[str, Any]]:
     """Attempt to repair incomplete JSON by adding missing closing brackets"""
@@ -265,95 +264,65 @@ def _check_server_health() -> bool:
         logger.error(f"Server health check failed: {e}")
         return False
 
-def generate_for_row(sanskrit: str, english: str, model: str = "gpt-oss:120b", n: int = 4, timeout: Optional[float] = None) -> Dict[str, Any]:
-    """Generate Q&A pairs for a given shloka with comprehensive error handling"""
-    
-    logger.info(f"Starting generation for row - Sanskrit chars: {len(sanskrit)}, English chars: {len(english)}, n: {n}")
-    
-    # Check server health first
-    if not _check_server_health():
-        raise RuntimeError("Ollama server is not available or model not found")
-    
-    prompt = build_prompt(sanskrit, english, n)
+def _generate_single_qa(sanskrit: str, english: str, model: str, timeout: float) -> Dict[str, Any]:
+    """Generate a single Q&A pair with retries."""
+    prompt = build_prompt(sanskrit, english)
     endpoint = f"{OLLAMA_URL}/api/generate"
-    
-    # Use increased token limit to prevent truncation
     payload = {
         "model": model,
         "prompt": prompt,
         "stream": False,
-        "temperature": 0.1,
+        "temperature": 0.1 + random.random() * 0.4, # Add some variability
         "max_output_tokens": MAX_OUTPUT_TOKENS,
-        "options": {
-            "num_predict": MAX_OUTPUT_TOKENS
-        }
+        "options": {"num_predict": MAX_OUTPUT_TOKENS}
     }
-    
+
     last_err = None
-    used_timeout = timeout if (timeout is not None) else GEN_TIMEOUT
-    
-    logger.info(f"Making request to Ollama - Model: {model}, Timeout: {used_timeout}s, Max tokens: {MAX_OUTPUT_TOKENS}")
-    
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            logger.info(f"Generation attempt {attempt}/{MAX_RETRIES}")
-            
-            # Make the request
-            start_time = time.time()
-            resp = requests.post(endpoint, json=payload, timeout=used_timeout)
-            request_duration = time.time() - start_time
-            
-            logger.info(f"Request completed in {request_duration:.2f}s - Status: {resp.status_code}")
-            
-            if resp.status_code != 200:
-                logger.error(f"Ollama API error {resp.status_code}: {resp.text}")
-                resp.raise_for_status()
-            
-            # Parse the response
-            response_data = resp.json()
-            logger.debug(f"Response keys: {list(response_data.keys())}")
-            
-            # Extract the generated text
-            response_text = response_data.get('response', '')
-            thinking = response_data.get('thinking', '')
-            
-            logger.info(f"Generation stats - Total duration: {response_data.get('total_duration', 0)/1e9:.2f}s, "
-                       f"Eval count: {response_data.get('eval_count', 0)}, "
-                       f"Response length: {len(response_text)}")
-            
-            if thinking:
-                logger.debug(f"Model thinking: {thinking[:200]}...")
-            
-            if not response_text.strip():
-                logger.warning("Empty response received from model")
-                raise ValueError("Model returned empty response")
-            
-            logger.debug(f"Raw response preview: {response_text[:300]}...")
-            
-            # Try to parse the JSON response with repair capabilities
-            parsed = _try_parse_response(response_text)
+            resp = requests.post(endpoint, json=payload, timeout=timeout)
+            resp.raise_for_status()
+            parsed = _try_parse_response(resp.json().get('response', ''))
             if parsed:
-                logger.info("Successfully parsed JSON response")
-                _validate_output(parsed, n)
-                logger.info(f"Successfully generated and validated {n} Q&A pairs per language")
+                _validate_output(parsed, n=1)
                 return parsed
             else:
-                logger.warning("Failed to parse JSON from response")
                 raise ValueError("Failed to parse valid JSON from model response")
-                
         except Exception as e:
             last_err = e
-            logger.warning(f"Attempt {attempt} failed: {str(e)}")
-            
+            logger.warning(f"Single generation attempt {attempt} failed: {e}")
             if attempt < MAX_RETRIES:
-                wait_time = RETRY_BACKOFF * (2 ** (attempt - 1)) * (0.5 + random.random())
-                logger.info(f"Waiting {wait_time:.2f}s before next attempt...")
-                time.sleep(wait_time)
+                time.sleep(RETRY_BACKOFF * (2 ** (attempt - 1)))
+            continue
+    raise last_err if last_err else RuntimeError("Single generation failed")
+
+def generate_for_row(sanskrit: str, english: str, model: str = "gpt-oss:120b", n: int = 4, timeout: Optional[float] = None) -> Dict[str, Any]:
+    """Generate Q&A pairs in parallel for a given shloka."""
+    logger.info(f"Starting parallel generation for {n} Q&A pairs.")
+    if not _check_server_health():
+        raise RuntimeError("Ollama server is not available or model not found")
+
+    used_timeout = timeout if timeout is not None else GEN_TIMEOUT
+    results = {
+        "q_en": [], "a_en": [],
+        "q_hi": [], "a_hi": [],
+        "q_sa": [], "a_sa": []
+    }
+    
+    with ThreadPoolExecutor(max_workers=n) as executor:
+        futures = [executor.submit(_generate_single_qa, sanskrit, english, model, used_timeout) for _ in range(n)]
+
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+                for key in results.keys():
+                    results[key].extend(result[key])
+            except Exception as e:
+                logger.error(f"A generation task failed: {e}")
+                # Even if some fail, we try to return a partial result
                 continue
-            else:
-                logger.error(f"All {MAX_RETRIES} attempts failed")
-            break
     
-    
-    logger.error(f"Generation completely failed after {MAX_RETRIES} attempts")
-    raise last_err if last_err else RuntimeError("Generation failed after all retries")
+    # Final validation to ensure correct number of pairs, pad if necessary
+    _validate_output(results, n)
+    logger.info(f"Successfully generated {len(results['q_en'])}/{n} Q&A pairs in parallel.")
+    return results

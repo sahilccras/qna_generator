@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { getRow, generateRow, saveRow } from "../api";
+import { getRow, generateRow, saveRow, ensureHeaders } from "../api";
 
 export default function ShlokaEditor({ id, onSaved }) {
   const [row, setRow] = useState(null);
@@ -38,6 +38,7 @@ export default function ShlokaEditor({ id, onSaved }) {
     setLoading(true);
     try {
       const out = await generateRow(id, qaCount);
+      await ensureHeaders(qaCount);
       setGenerated(out);
       // By default, all generated QAs are selected
       setSelectedQA(
@@ -108,169 +109,104 @@ export default function ShlokaEditor({ id, onSaved }) {
     setRow(prev => ({ ...prev, tags: prev.tags.filter(tag => tag !== tagToRemove) }));
   }
 
-  if (loading || !row) {
-    return <div className="text-gray-600">Loading...</div>;
+  if (loading && !row) {
+    return <Spinner />;
+  }
+  if (!row) {
+    return <div className="text-text-secondary p-8">Select an item from the sidebar to begin.</div>;
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="mb-4">
-        <h1 className="text-2xl font-semibold">Shloka Editor</h1>
-        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <label
-              htmlFor="sanskrit"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Sanskrit
-            </label>
-            <textarea
-              id="sanskrit"
-              value={row.sanskrit}
-              onChange={(e) => handleTextChange("sanskrit", e.target.value)}
-              className="mt-1 block w-full border rounded-md p-2 shadow-sm"
-              rows={4}
-            />
+    <div className="max-w-5xl mx-auto space-y-6">
+      {/* Source Text Card */}
+      <div className="bg-card p-6 rounded-lg shadow-md border border-border-color">
+        <h2 className="text-xl font-bold text-text-primary mb-4">Source Text</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="sanskrit" className="block text-sm font-medium text-text-primary mb-1">Sanskrit</label>
+            <textarea id="sanskrit" value={row.sanskrit} onChange={(e) => handleTextChange("sanskrit", e.target.value)} className="w-full border-border-color rounded-md shadow-sm p-2" rows={4} />
           </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <label
-              htmlFor="english"
-              className="block text-sm font-medium text-gray-700"
-            >
-              English
-            </label>
-            <textarea
-              id="english"
-              value={row.english}
-              onChange={(e) => handleTextChange("english", e.target.value)}
-              className="mt-1 block w-full border rounded-md p-2 shadow-sm"
-              rows={4}
-            />
+          <div>
+            <label htmlFor="english" className="block text-sm font-medium text-text-primary mb-1">English</label>
+            <textarea id="english" value={row.english} onChange={(e) => handleTextChange("english", e.target.value)} className="w-full border-border-color rounded-md shadow-sm p-2" rows={4} />
           </div>
         </div>
       </div>
 
-      <div className="mb-4 bg-white p-4 rounded-lg shadow-sm">
-        <label htmlFor="tags" className="block text-sm font-medium text-gray-700">Tags</label>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
+      {/* Tags Card */}
+      <div className="bg-card p-6 rounded-lg shadow-md border border-border-color">
+        <h3 className="text-lg font-bold text-text-primary mb-3">Metadata & Tags</h3>
+        <div className="flex flex-wrap items-center gap-2">
           {row.tags && row.tags.map(tag => (
-            <div key={tag} className="flex items-center bg-sky-100 text-sky-800 text-sm font-medium px-2.5 py-0.5 rounded-full">
+            <div key={tag} className="flex items-center bg-accent bg-opacity-20 text-accent text-sm font-medium px-3 py-1 rounded-full">
               {tag}
-              <button onClick={() => handleRemoveTag(tag)} className="ml-1.5 text-sky-600 hover:text-sky-800">
-                &times;
-              </button>
+              <button onClick={() => handleRemoveTag(tag)} className="ml-2 text-accent hover:font-bold">&times;</button>
             </div>
           ))}
         </div>
-        <input
-          id="tags"
-          type="text"
-          onKeyDown={handleAddTag}
-          placeholder="Add a tag and press Enter"
-          className="mt-2 block w-full border rounded-md p-2 shadow-sm"
-        />
+        <input id="tags" type="text" onKeyDown={handleAddTag} placeholder="Add a tag and press Enter" className="mt-3 block w-full border-border-color rounded-md shadow-sm p-2" />
       </div>
 
-      <div className="mb-4 flex items-center gap-4 flex-wrap">
-        <div className="flex items-center gap-2">
-          <label htmlFor="qaCount" className="text-sm font-medium">
-            Questions to generate:
-          </label>
-          <input
-            id="qaCount"
-            type="number"
-            value={qaCount}
-            onChange={(e) => setQaCount(Number(e.target.value))}
-            className="w-20 border px-2 py-1 rounded-md shadow-sm"
-            min="1"
-            max="10"
-          />
+      {/* Generation Controls Card */}
+      <div className="bg-card p-6 rounded-lg shadow-md border border-border-color">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <label htmlFor="qaCount" className="text-sm font-medium text-text-primary">Questions:</label>
+              <input id="qaCount" type="number" value={qaCount} onChange={(e) => setQaCount(Number(e.target.value))} className="w-20 border-border-color rounded-md shadow-sm p-2" min="1" max="10" />
+            </div>
+            <div className="flex items-center gap-2">
+              <input id="autoGenerate" type="checkbox" checked={autoGenerate} onChange={(e) => setAutoGenerate(e.target.checked)} className="h-4 w-4 rounded border-border-color text-primary focus:ring-primary" />
+              <label htmlFor="autoGenerate" className="text-sm font-medium text-text-primary">Auto-generate</label>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button className="bg-primary text-white px-4 py-2 rounded-md shadow-sm hover:bg-opacity-90 disabled:bg-opacity-50 flex items-center gap-2" onClick={handleGenerate} disabled={loading}>
+              {loading ? <Spinner small /> : <IconZap />} {loading ? "Generating..." : "Generate"}
+            </button>
+            <button className="border border-border-color px-4 py-2 rounded-md shadow-sm hover:bg-background disabled:opacity-50 flex items-center gap-2" onClick={handleSave} disabled={loading}>
+              <IconSave /> Save
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <input
-            id="autoGenerate"
-            type="checkbox"
-            checked={autoGenerate}
-            onChange={(e) => setAutoGenerate(e.target.checked)}
-            className="h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500"
-          />
-          <label htmlFor="autoGenerate" className="text-sm font-medium">
-            Auto-generate on edit
-          </label>
-        </div>
-        <div className="flex-grow"></div>
-        <button
-          className="bg-sky-600 text-white px-4 py-2 rounded-md shadow-sm hover:bg-sky-700 disabled:bg-sky-300"
-          onClick={handleGenerate}
-          disabled={loading}
-        >
-          {loading ? "Generating..." : "Generate"}
-        </button>
-        <button
-          className="border px-4 py-2 rounded-md shadow-sm hover:bg-gray-50 disabled:bg-gray-200"
-          onClick={handleSave}
-          disabled={loading}
-        >
-          Save
-        </button>
       </div>
 
+      {/* Generated Q&A */}
       {generated ? (
-        <div className="space-y-6">
         <div className="space-y-4">
+          <h2 className="text-xl font-bold text-text-primary">Generated Q&A</h2>
           {generated.q_en.map((_, i) => (
-            <div
-              key={i}
-              className="bg-white p-4 rounded-lg shadow-sm border"
-            >
-              <div className="flex items-start gap-4">
-                <input
-                  type="checkbox"
-                  checked={selectedQA.includes(i)}
-                  onChange={() => handleQASelection(i)}
-                  className="mt-1 h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500"
-                />
-                <div className="flex-grow grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {["en", "hi", "sa"].map((lang) => (
-                    <div key={lang}>
-                      <h4 className="font-semibold text-gray-800 capitalize mb-2">
-                        {lang === "en"
-                          ? "English"
-                          : lang === "hi"
-                          ? "Hindi"
-                          : "Sanskrit"}
-                      </h4>
-                      <div className="space-y-2">
-                        <textarea
-                          value={generated[`q_${lang}`][i]}
-                          onChange={(e) =>
-                            updateGenerated(`q_${lang}`, i, e.target.value)
-                          }
-                          className="w-full border rounded p-2 text-sm"
-                          rows={2}
-                          placeholder={`Question ${i + 1}`}
-                        />
-                        <textarea
-                          value={generated[`a_${lang}`][i]}
-                          onChange={(e) =>
-                            updateGenerated(`a_${lang}`, i, e.target.value)
-                          }
-                          className="w-full border rounded p-2 text-sm"
-                          rows={3}
-                          placeholder={`Answer ${i + 1}`}
-                        />
-                      </div>
+            <div key={i} className="bg-card p-4 rounded-lg shadow-md border border-border-color flex items-start gap-4">
+              <input type="checkbox" checked={selectedQA.includes(i)} onChange={() => handleQASelection(i)} className="mt-1 h-5 w-5 rounded border-border-color text-primary focus:ring-primary" />
+              <div className="flex-grow grid grid-cols-1 md:grid-cols-3 gap-4">
+                {["en", "hi", "sa"].map((lang) => (
+                  <div key={lang}>
+                    <h4 className="font-semibold text-text-primary capitalize mb-2">{lang === "en" ? "English" : lang === "hi" ? "Hindi" : "Sanskrit"}</h4>
+                    <div className="space-y-2">
+                      <textarea value={generated[`q_${lang}`][i]} onChange={(e) => updateGenerated(`q_${lang}`, i, e.target.value)} className="w-full border-border-color rounded-md p-2 text-sm" rows={3} placeholder={`Question ${i + 1}`} />
+                      <textarea value={generated[`a_${lang}`][i]} onChange={(e) => updateGenerated(`a_${lang}`, i, e.target.value)} className="w-full border-border-color rounded-md p-2 text-sm" rows={4} placeholder={`Answer ${i + 1}`} />
                     </div>
-                  ))}
-                </div>
                   </div>
-                </div>
-          ))}
+                ))}
+              </div>
             </div>
+          ))}
         </div>
       ) : (
-        <div className="text-gray-500">No generated Q&A yet. Click Generate.</div>
+        <div className="text-center text-text-secondary p-8 bg-card rounded-lg shadow-md border border-border-color">
+          <p className="font-semibold">No Q&A Generated</p>
+          <p>Click "Generate" to create question-answer pairs.</p>
+        </div>
       )}
     </div>
   );
 }
+
+const Spinner = ({ small }) => (
+  <svg className={`animate-spin ${small ? 'h-4 w-4' : 'h-8 w-8'} text-white`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+  </svg>
+);
+const IconZap = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>;
+const IconSave = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>;

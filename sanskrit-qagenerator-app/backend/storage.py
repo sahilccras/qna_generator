@@ -76,35 +76,21 @@ class CSVStorage:
             if idx < 0 or idx >= len(self.df):
                 return False
 
-            # Clean NaN values from payload
-            cleaned_payload = {}
-            for key, val in payload.items():
-                if isinstance(val, list):
-                    cleaned_payload[key] = ["" if (pd.isna(item) if not isinstance(item, str) else False) else item for item in val]
-                else:
-                    cleaned_payload[key] = "" if (pd.isna(val) if not isinstance(val, str) else False) else val
+            # Update tags
+            if 'tags' in payload:
+                if 'tags' not in self.df.columns:
+                    self.df['tags'] = ""
+                self.df.at[idx, 'tags'] = payload['tags']
 
-            # expected payload keys: q_en (list), a_en (list), q_hi, a_hi, q_sa, a_sa, tags (string)
-            for key, val in cleaned_payload.items():
-                if key == 'tags':
-                    if 'tags' not in self.df.columns:
-                        self.df['tags'] = ""
-                    self.df.at[idx, 'tags'] = val
-                    continue
-
-                if isinstance(val, list):
-                    base = key  # e.g., "q_en"
-                    for i, item in enumerate(val, start=1):
-                        col_q = f"{base}_{i}"  # e.g., q_en_1
-                        # create column if missing
-                        if col_q not in self.df.columns:
-                            self.df[col_q] = ""
-                        self.df.at[idx, col_q] = str(item) if item is not None else ""
-                else:
-                    # any direct scalar writing to column
-                    if key not in self.df.columns:
-                        self.df[key] = ""
-                    self.df.at[idx, key] = str(val) if val is not None else ""
+            # Update Q&A pairs
+            qa_keys = [k for k in payload.keys() if k.startswith(('q_', 'a_'))]
+            for key in qa_keys:
+                if isinstance(payload[key], list):
+                    for i, item in enumerate(payload[key], start=1):
+                        col_name = f"{key}_{i}"
+                        if col_name not in self.df.columns:
+                            self.df[col_name] = ""
+                        self.df.at[idx, col_name] = str(item) if item is not None else ""
 
             # Ensure no NaN values before saving
             self.df = self.df.fillna("")
@@ -113,6 +99,17 @@ class CSVStorage:
             self.df.to_csv(tmp, index=False, encoding='utf-8-sig')
             os.replace(tmp, self.csv_path)
             return True
+
+    def ensure_headers(self, count: int):
+        with self.lock:
+            headers = self.headers_for_qa_count(count)
+            for header in headers:
+                if header not in self.df.columns:
+                    self.df[header] = ""
+
+            tmp = self.csv_path + ".tmp"
+            self.df.to_csv(tmp, index=False, encoding='utf-8-sig')
+            os.replace(tmp, self.csv_path)
 
     def has_existing_qa_data(self, idx: int) -> bool:
         """Check if a row already has Q&A data"""

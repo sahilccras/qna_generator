@@ -10,18 +10,27 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [showBatchProcessor, setShowBatchProcessor] = useState(false);
   const [autoProcessOnUpload, setAutoProcessOnUpload] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchRows();
   }, [query]);
 
   async function fetchRows() {
-    const data = await listRows(0, 1000, query); // Increased limit
-    setRows(data);
-    if (data.length > 0 && selectedId === null) {
-      setSelectedId(data[0].id);
-    } else if (data.length === 0) {
-      setSelectedId(null);
+    setLoading(true);
+    try {
+      const data = await listRows(0, 1000, query);
+      setRows(data);
+      if (data.length > 0 && selectedId === null) {
+        setSelectedId(data[0].id);
+      } else if (data.length === 0) {
+        setSelectedId(null);
+      }
+    } catch (error) {
+      console.error("Failed to fetch rows:", error);
+      alert("Failed to load data. Is the backend running?");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -36,23 +45,21 @@ export default function App() {
   async function handleUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
-    await uploadCSV(file);
-    await fetchRows();
-    if (autoProcessOnUpload) {
-      setShowBatchProcessor(true);
+    setLoading(true);
+    try {
+      await uploadCSV(file);
+      await fetchRows();
+      if (autoProcessOnUpload) {
+        setShowBatchProcessor(true);
+      }
+    } catch (error) {
+      console.error("Upload failed:", error);
+      alert("Upload failed. Please try again.");
+    } finally {
+      setLoading(false);
     }
   }
 
-  async function handleDownload() {
-    const blob = await downloadCSV();
-    const url = window.URL.createObjectURL(new Blob([blob]));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "data.csv";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  }
 
   async function handleExport(format) {
     const data = await getAllData(); // This will be a new API endpoint
@@ -86,21 +93,24 @@ export default function App() {
   };
 
   return (
-    <div className="h-screen flex">
+    <div className="h-screen flex bg-gray-100">
       <Sidebar
         rows={rows}
         onSelect={handleSelect}
         selectedId={selectedId}
         onUpload={handleUpload}
         onRefresh={fetchRows}
-        onDownload={handleDownload}
         onShowBatchProcessor={() => setShowBatchProcessor(true)}
         onExport={handleExport}
         onQueryChange={handleQueryChange}
         onAutoProcessChange={setAutoProcessOnUpload}
       />
       <div className="flex-1 p-6 overflow-auto">
-        {showBatchProcessor ? (
+        {loading ? (
+          <div className="flex items-center justify-center h-full">
+            <p>Loading...</p>
+          </div>
+        ) : showBatchProcessor ? (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-semibold">Batch CSV Processing</h2>

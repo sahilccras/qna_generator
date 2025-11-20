@@ -53,3 +53,8 @@ export async function getAllData() {
   const r = await axios.get(`${API_BASE}/data`);
   return r.data;
 }
+
+export async function ensureHeaders(count) {
+  const r = await axios.post(`${API_BASE}/ensure_headers/${count}`);
+  return r.data;
+}

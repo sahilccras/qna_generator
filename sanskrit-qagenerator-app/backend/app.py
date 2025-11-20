@@ -102,9 +102,14 @@ def save_row(idx: int, payload: Dict[str, Any]):
         raise HTTPException(status_code=400, detail="Failed to save")
     return {"status": "ok"}
 
+@app.post("/ensure_headers/{count}")
+def ensure_headers(count: int):
+    storage.ensure_headers(count)
+    return {"status": "ok"}
+
 @app.get("/download")
 def download_csv():
-    return FileResponse(CSV_PATH, media_type="text/csv", filename=os.path.basename(CSV_PATH))
+    return FileResponse(CSV_PATH, media_type="text/csv; charset=utf-8-sig", filename=os.path.basename(CSV_PATH))
 
 @app.get("/data")
 def get_all_data():
