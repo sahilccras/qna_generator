@@ -52,10 +52,11 @@ class GenerateRequest(BaseModel):
 @app.on_event("startup")
 def startup():
     os.makedirs(CSV_FOLDER, exist_ok=True)
-    if not os.path.exists(CSV_PATH):
-        headers = storage.headers_for_qa_count(4)
-        df = pd.DataFrame(columns=headers)
-        df.to_csv(CSV_PATH, index=False, encoding='utf-8-sig')
+    if os.path.exists(CSV_PATH):
+        os.remove(CSV_PATH)
+    headers = storage.headers_for_qa_count(4)
+    df = pd.DataFrame(columns=headers)
+    df.to_csv(CSV_PATH, index=False, encoding='utf-8-sig')
     storage.reload()
     logger.info("Startup complete. CSV path: %s", CSV_PATH)
 
@@ -124,14 +125,18 @@ class BatchProcessRequest(BaseModel):
 
 class ProcessStatus(BaseModel):
     process_id: str
-    status: str  # "running", "completed", "error"
+    status: str
     current_row: int
     total_rows: int
     current_sanskrit: str
     error_message: str = ""
+    results: List[Dict[str, Any]] = []
 
-# Store process status in memory (for production, use Redis or database)
 process_statuses: Dict[str, ProcessStatus] = {}
+
+class BatchSaveRequest(BaseModel):
+    process_id: str
+    rows: List[Dict[str, Any]]
 
 @app.post("/process-batch")
 async def process_batch(req: BatchProcessRequest, background_tasks: BackgroundTasks):
@@ -160,69 +165,54 @@ def get_process_status(process_id: str):
         raise HTTPException(status_code=404, detail="Process not found")
     return status
 
+@app.post("/save-batch")
+def save_batch(req: BatchSaveRequest):
+    """Save selected rows from a batch process"""
+    for row_data in req.rows:
+        idx = row_data.get("id")
+        if idx is not None:
+            storage.update_row_with_qas(idx, row_data)
+    return {"status": "ok"}
+
 async def process_all_rows(process_id: str, qa_count: int):
-    """Background task to process all rows"""
+    """Background task to process all rows and store results in memory"""
+    status = process_statuses[process_id]
     try:
         total_rows = storage.row_count()
-        logger.info(f"Starting batch processing for {total_rows} rows")
+        status.total_rows = total_rows
+        results = []
         
         for idx in range(total_rows):
-            # Update status
             row = storage.get_row(idx)
-            sanskrit_preview = row.get("sanskrit", "")[:50] + "..." if len(row.get("sanskrit", "")) > 50 else row.get("sanskrit", "")
+            sanskrit_preview = row.get("sanskrit", "")[:50] + "..."
             
-            process_statuses[process_id] = ProcessStatus(
-                process_id=process_id,
-                status="running",
-                current_row=idx + 1,
-                total_rows=total_rows,
-                current_sanskrit=sanskrit_preview
-            )
+            status.current_row = idx + 1
+            status.current_sanskrit = sanskrit_preview
             
-            logger.info(f"Processing row {idx + 1}/{total_rows}: {sanskrit_preview}")
-            
-            # Check if this row already has Q&A data
-            has_existing_data = any(key.startswith('q_en_') and row.get(key) for key in row.keys() if key.startswith('q_en_'))
+            has_existing_data = storage.has_existing_qa_data(idx)
             
             if not has_existing_data:
-                # Generate Q&A for this row
                 sanskrit = row.get("sanskrit", "")
                 english = row.get("english", "")
-                
                 if sanskrit and english:
                     try:
-                        out = generate_for_row(sanskrit, english, model=os.getenv("MODEL_NAME", MODEL_NAME), n=qa_count)
-                        storage.update_row_with_qas(idx, out)
-                        logger.info(f"Successfully generated and saved Q&A for row {idx}")
+                        generated_qas = generate_for_row(sanskrit, english, model=os.getenv("MODEL_NAME", MODEL_NAME), n=qa_count)
+                        result_item = {"id": idx, "sanskrit": sanskrit, "english": english, **generated_qas}
+                        results.append(result_item)
                     except Exception as e:
-                        logger.error(f"Failed to generate Q&A for row {idx}: {str(e)}")
-                        # Continue with next row instead of failing entire batch
-                        continue
+                        logger.error(f"Failed to generate Q&A for row {idx}: {e}")
                 else:
-                    logger.warning(f"Skipping row {idx} - missing Sanskrit or English text")
+                    logger.warning(f"Skipping row {idx} due to missing data.")
             else:
-                logger.info(f"Skipping row {idx} - already has Q&A data")
+                logger.info(f"Skipping row {idx} as it already has Q&A data.")
             
-            # Small delay to prevent overwhelming the system
             await asyncio.sleep(0.1)
         
-        # Mark as completed
-        process_statuses[process_id] = ProcessStatus(
-            process_id=process_id,
-            status="completed",
-            current_row=total_rows,
-            total_rows=total_rows,
-            current_sanskrit="All rows processed"
-        )
-        logger.info(f"Batch processing completed for {total_rows} rows")
+        status.status = "completed"
+        status.results = results
+        logger.info(f"Batch processing completed for process {process_id}.")
         
     except Exception as e:
-        logger.error(f"Batch processing failed: {str(e)}")
-        process_statuses[process_id] = ProcessStatus(
-            process_id=process_id,
-            status="error",
-            current_row=0,
-            total_rows=total_rows,
-            current_sanskrit="",
-            error_message=str(e)
-        )
+        logger.error(f"Batch processing failed for process {process_id}: {e}")
+        status.status = "error"
+        status.error_message = str(e)

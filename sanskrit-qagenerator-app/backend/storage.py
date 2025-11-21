@@ -76,6 +76,11 @@ class CSVStorage:
             if idx < 0 or idx >= len(self.df):
                 return False
 
+            # Clear old Q&A data
+            qa_columns = [col for col in self.df.columns if col.startswith(('q_', 'a_'))]
+            for col in qa_columns:
+                self.df.at[idx, col] = ""
+
             # Update tags
             if 'tags' in payload:
                 if 'tags' not in self.df.columns:

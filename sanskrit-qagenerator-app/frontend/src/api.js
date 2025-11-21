@@ -58,3 +58,8 @@ export async function ensureHeaders(count) {
   const r = await axios.post(`${API_BASE}/ensure_headers/${count}`);
   return r.data;
 }
+
+export async function saveBatch(processId, rows) {
+  const r = await axios.post(`${API_BASE}/save-batch`, { process_id: processId, rows });
+  return r.data;
+}
