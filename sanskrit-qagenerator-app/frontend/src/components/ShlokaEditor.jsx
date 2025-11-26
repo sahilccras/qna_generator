@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { getRow, generateRow, saveRow, ensureHeaders } from "../api";
 
-export default function ShlokaEditor({ id, onSaved }) {
+export default function ShlokaEditor({ filename, id, onSaved }) {
   const [row, setRow] = useState(null);
   const [loading, setLoading] = useState(false);
   const [qaCount, setQaCount] = useState(4);
@@ -20,12 +20,14 @@ export default function ShlokaEditor({ id, onSaved }) {
   }, [autoGenerate, row?.sanskrit, row?.english]);
 
   useEffect(() => {
-    loadRow();
-  }, [id]);
+    if (filename && id) {
+      loadRow();
+    }
+  }, [filename, id]);
 
   async function loadRow() {
     setLoading(true);
-    const data = await getRow(id);
+    const data = await getRow(filename, id);
     setRow({
       ...data,
       tags: data.tags ? data.tags.split(',').map(t => t.trim()) : []
@@ -37,8 +39,8 @@ export default function ShlokaEditor({ id, onSaved }) {
   async function handleGenerate() {
     setLoading(true);
     try {
-      const out = await generateRow(id, qaCount);
-      await ensureHeaders(qaCount);
+      const out = await generateRow(filename, id, qaCount);
+      await ensureHeaders(filename, qaCount);
       setGenerated(out);
       // By default, all generated QAs are selected
       setSelectedQA(
@@ -82,7 +84,7 @@ export default function ShlokaEditor({ id, onSaved }) {
 
     setLoading(true);
     try {
-      await saveRow(id, payload);
+      await saveRow(filename, id, payload);
       alert("Saved.");
       onSaved();
     } catch (e) {

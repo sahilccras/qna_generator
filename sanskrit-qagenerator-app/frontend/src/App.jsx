@@ -1,34 +1,57 @@
 import React, { useEffect, useState } from "react";
 import Sidebar from "./components/Sidebar";
 import ShlokaEditor from "./components/ShlokaEditor";
-import BatchProcessor from "./components/BatchProcessor"; // Add this import
-import { listRows, uploadCSV, downloadCSV, getAllData } from "./api";
+import BatchProcessor from "./components/BatchProcessor";
+import { listCsvs, listRows, uploadCSV, downloadCSV, getAllData } from "./api";
 
 export default function App() {
+  const [csvs, setCsvs] = useState([]);
+  const [selectedCsv, setSelectedCsv] = useState(null);
   const [rows, setRows] = useState([]);
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedRowId, setSelectedRowId] = useState(null);
   const [query, setQuery] = useState("");
   const [showBatchProcessor, setShowBatchProcessor] = useState(false);
   const [autoProcessOnUpload, setAutoProcessOnUpload] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchRows();
-  }, [query]);
+    fetchCsvs();
+  }, []);
+
+  useEffect(() => {
+    if (selectedCsv) {
+      fetchRows();
+    }
+  }, [selectedCsv, query]);
+
+  async function fetchCsvs() {
+    setLoading(true);
+    try {
+      const data = await listCsvs();
+      setCsvs(data);
+      if (data.length > 0 && !selectedCsv) {
+        setSelectedCsv(data[0]);
+      }
+    } catch (error) {
+      console.error("Failed to fetch CSVs:", error);
+      alert("Failed to load CSV list. Is the backend running?");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function fetchRows() {
     setLoading(true);
     try {
-      const data = await listRows(0, 1000, query);
+      const data = await listRows(selectedCsv, 0, 1000, query);
       setRows(data);
-      if (data.length > 0 && selectedId === null) {
-        setSelectedId(data[0].id);
+      if (data.length > 0 && selectedRowId === null) {
+        setSelectedRowId(data[0].id);
       } else if (data.length === 0) {
-        setSelectedId(null);
+        setSelectedRowId(null);
       }
     } catch (error) {
       console.error("Failed to fetch rows:", error);
-      alert("Failed to load data. Is the backend running?");
     } finally {
       setLoading(false);
     }
@@ -38,17 +61,24 @@ export default function App() {
     setQuery(newQuery);
   }
 
-  function handleSelect(id) {
-    setSelectedId(id);
+  function handleSelectCsv(csv) {
+    setSelectedCsv(csv);
+    setSelectedRowId(null);
+  }
+
+  function handleSelectRow(id) {
+    setSelectedRowId(id);
   }
 
   async function handleUpload(e) {
-    const file = e.target.files[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files) return;
     setLoading(true);
     try {
-      await uploadCSV(file);
-      await fetchRows();
+      for (const file of files) {
+        await uploadCSV(file);
+      }
+      await fetchCsvs();
       if (autoProcessOnUpload) {
         setShowBatchProcessor(true);
       }
@@ -60,21 +90,27 @@ export default function App() {
     }
   }
 
-
   async function handleExport(format) {
-    const data = await getAllData(); // This will be a new API endpoint
+    const data = await getAllData(selectedCsv);
     let content;
     let filename;
 
     if (format === "csv") {
-      handleDownload();
+      const blob = await downloadCSV(selectedCsv);
+      const url = window.URL.createObjectURL(new Blob([blob]));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = selectedCsv;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
       return;
     } else if (format === "json") {
       content = JSON.stringify(data, null, 2);
-      filename = "data.json";
+      filename = `${selectedCsv}.json`;
     } else if (format === "jsonl") {
       content = data.map(row => JSON.stringify(row)).join('\n');
-      filename = "data.jsonl";
+      filename = `${selectedCsv}.jsonl`;
     }
 
     const blob = new Blob([content], { type: "application/json" });
@@ -88,18 +124,20 @@ export default function App() {
   }
 
   const handleBatchComplete = () => {
-    // Refresh the data when batch processing completes
-    fetchRows();
+    fetchCsvs();
   };
 
   return (
     <div className="h-screen flex bg-gray-100">
       <Sidebar
+        csvs={csvs}
+        selectedCsv={selectedCsv}
+        onSelectCsv={handleSelectCsv}
         rows={rows}
-        onSelect={handleSelect}
-        selectedId={selectedId}
+        onSelectRow={handleSelectRow}
+        selectedRowId={selectedRowId}
         onUpload={handleUpload}
-        onRefresh={fetchRows}
+        onRefresh={fetchCsvs}
         onShowBatchProcessor={() => setShowBatchProcessor(true)}
         onExport={handleExport}
         onQueryChange={handleQueryChange}
@@ -111,25 +149,19 @@ export default function App() {
             <p>Loading...</p>
           </div>
         ) : showBatchProcessor ? (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-semibold">Batch CSV Processing</h2>
-              <button
-                onClick={() => setShowBatchProcessor(false)}
-                className="px-4 py-2 border rounded hover:bg-gray-50"
-              >
-                ← Back to Editor
-              </button>
-            </div>
-            <BatchProcessor 
-              onComplete={handleBatchComplete}
-              rowCount={rows.length}
-            />
-          </div>
-        ) : selectedId !== null ? (
-          <ShlokaEditor id={selectedId} key={selectedId} onSaved={fetchRows} />
+          <BatchProcessor
+            onComplete={handleBatchComplete}
+            filenames={csvs}
+          />
+        ) : selectedRowId !== null ? (
+          <ShlokaEditor
+            key={`${selectedCsv}-${selectedRowId}`}
+            filename={selectedCsv}
+            id={selectedRowId}
+            onSaved={fetchRows}
+          />
         ) : (
-          <div className="text-gray-600">No row selected</div>
+          <div className="text-gray-600">Select a shloka to view.</div>
         )}
       </div>
     </div>

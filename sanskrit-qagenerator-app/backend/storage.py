@@ -62,7 +62,6 @@ class CSVStorage:
         r = self.df.iloc[idx].to_dict()
         r['id'] = int(idx)
         
-        # Clean NaN values from the row data
         for key, value in r.items():
             if pd.isna(value):
                 r[key] = ""
@@ -76,28 +75,21 @@ class CSVStorage:
             if idx < 0 or idx >= len(self.df):
                 return False
 
-            # Clear old Q&A data
-            qa_columns = [col for col in self.df.columns if col.startswith(('q_', 'a_'))]
-            for col in qa_columns:
-                self.df.at[idx, col] = ""
-
-            # Update tags
             if 'tags' in payload:
                 if 'tags' not in self.df.columns:
                     self.df['tags'] = ""
                 self.df.at[idx, 'tags'] = payload['tags']
 
-            # Update Q&A pairs
+            existing_qas = self.count_existing_qas(idx)
             qa_keys = [k for k in payload.keys() if k.startswith(('q_', 'a_'))]
             for key in qa_keys:
                 if isinstance(payload[key], list):
                     for i, item in enumerate(payload[key], start=1):
-                        col_name = f"{key}_{i}"
+                        col_name = f"{key}_{existing_qas + i}"
                         if col_name not in self.df.columns:
                             self.df[col_name] = ""
                         self.df.at[idx, col_name] = str(item) if item is not None else ""
 
-            # Ensure no NaN values before saving
             self.df = self.df.fillna("")
 
             tmp = self.csv_path + ".tmp"
@@ -117,12 +109,10 @@ class CSVStorage:
             os.replace(tmp, self.csv_path)
 
     def has_existing_qa_data(self, idx: int) -> bool:
-        """Check if a row already has Q&A data"""
         if idx < 0 or idx >= len(self.df):
             return False
         
         row = self.df.iloc[idx]
-        # Check if any Q&A columns have data
         qa_columns = [col for col in self.df.columns if col.startswith(('q_en_', 'q_hi_', 'q_sa_'))]
         
         for col in qa_columns:
@@ -130,3 +120,46 @@ class CSVStorage:
                 return True
         
         return False
+
+    def count_existing_qas(self, idx: int) -> int:
+        if idx < 0 or idx >= len(self.df):
+            return 0
+
+        row = self.df.iloc[idx]
+        max_q_num = 0
+        # Check all q_ columns, not just q_en
+        for col in self.df.columns:
+            if col.startswith('q_') and pd.notna(row.get(col)) and str(row.get(col)).strip():
+                try:
+                    num = int(col.split('_')[-1])
+                    if num > max_q_num:
+                        max_q_num = num
+                except (ValueError, IndexError):
+                    continue
+        return max_q_num
+
+class CSVManager:
+    def __init__(self, data_folder: str):
+        self.data_folder = data_folder
+        self.storages: Dict[str, CSVStorage] = {}
+        self._discover_csvs()
+
+    def _discover_csvs(self):
+        os.makedirs(self.data_folder, exist_ok=True)
+        for filename in os.listdir(self.data_folder):
+            if filename.endswith(".csv"):
+                self.get_storage(filename)
+
+    def get_storage(self, filename: str) -> CSVStorage:
+        if filename not in self.storages:
+            path = os.path.join(self.data_folder, filename)
+            self.storages[filename] = CSVStorage(path)
+        return self.storages[filename]
+
+    def add_csv(self, filename: str, df: pd.DataFrame):
+        path = os.path.join(self.data_folder, filename)
+        df.to_csv(path, index=False, encoding='utf-8-sig')
+        self.get_storage(filename) # This will create and load the new storage instance
+
+    def list_csvs(self) -> List[str]:
+        return sorted(self.storages.keys())
