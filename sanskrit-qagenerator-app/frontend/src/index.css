@@ -2,5 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
-/* small customizations */
-body { @apply bg-slate-50; }
+:root {
+  --background: #f8f7f4; /* Light Cream */
+  --sidebar-bg: #ffffff;
+  --card-bg: #ffffff;
+  --primary: #88a666;    /* Muted Green */
+  --secondary: #b6c9a9;  /* Lighter Green */
+  --accent: #d2a9a9;     /* Dusty Rose */
+  --text-primary: #3d403a; /* Dark Olive */
+  --text-secondary: #6e7368;
+  --border-color: #e0e0e0;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--text-primary);
+}

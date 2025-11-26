@@ -1,139 +1,91 @@
-import React, { useState, useEffect } from "react";
-import { startBatchProcess, getProcessStatus } from "../api";
+import React, { useState, useEffect } from 'react';
+import { processBatch } from '../api';
 
-export default function BatchProcessor({ onComplete, rowCount }) {
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [processId, setProcessId] = useState(null);
-  const [status, setStatus] = useState(null);
-  const [qaCount, setQaCount] = useState(4);
+export default function BatchProcessor({ onComplete, filenames }) {
+  const [logs, setLogs] = useState([]);
+  const [status, setStatus] = useState('idle'); // idle, processing, complete, error
+  const [processedFiles, setProcessedFiles] = useState(0);
 
   useEffect(() => {
-    let interval;
-    
-    if (isProcessing && processId) {
-      interval = setInterval(async () => {
-        try {
-          const statusData = await getProcessStatus(processId);
-          setStatus(statusData);
-          
-          if (statusData.status === "completed" || statusData.status === "error") {
-            setIsProcessing(false);
-            clearInterval(interval);
-            if (onComplete) onComplete();
-          }
-        } catch (error) {
-          console.error("Error fetching status:", error);
-        }
-      }, 2000); // Poll every 2 seconds
-    }
-    
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [isProcessing, processId, onComplete]);
+    // Automatically start processing when the component mounts
+    startProcessing();
+  }, []);
+
+  const addLog = (message) => {
+    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${message}`]);
+  };
 
   const startProcessing = async () => {
-    if (!rowCount || rowCount === 0) {
-      alert("No rows to process. Please upload a CSV first.");
-      return;
+    setStatus('processing');
+    addLog('Starting batch processing...');
+
+    for (let i = 0; i < filenames.length; i++) {
+        const filename = filenames[i];
+        if (filename.endsWith('_processed.csv')) {
+            addLog(`Skipping already processed file: ${filename}`);
+            continue;
+        }
+
+        try {
+            addLog(`Processing file ${i + 1}/${filenames.length}: ${filename}...`);
+            const response = await processBatch(filename);
+            addLog(`Successfully processed ${filename}. Output saved to ${response.output_file}.`);
+            setProcessedFiles(prev => prev + 1);
+        } catch (error) {
+            addLog(`Error processing ${filename}: ${error.message}`);
+            setStatus('error');
+            // Optionally, stop on first error
+            // addLog('Batch processing stopped due to an error.');
+            // return;
+        }
     }
-    
-    setIsProcessing(true);
-    setStatus(null);
-    
-    try {
-      const response = await startBatchProcess(qaCount);
-      setProcessId(response.process_id);
-    } catch (error) {
-      console.error("Failed to start batch processing:", error);
-      alert("Failed to start batch processing: " + error.message);
-      setIsProcessing(false);
-    }
+
+    addLog('Batch processing complete.');
+    setStatus('complete');
+    onComplete();
   };
 
-  const getProgressPercentage = () => {
-    if (!status || status.total_rows === 0) return 0;
-    return Math.round((status.current_row / status.total_rows) * 100);
-  };
+  const progressPercentage = (processedFiles / (filenames.length || 1)) * 100;
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-sm border">
-      <h3 className="text-lg font-semibold mb-4">Batch Process CSV</h3>
-      
-      <div className="space-y-4">
-        <div className="flex items-center gap-4">
-          <label className="text-sm font-medium">QA Count per Row:</label>
-          <select 
-            value={qaCount} 
-            onChange={e => setQaCount(Number(e.target.value))} 
-            className="border px-3 py-2 rounded"
-            disabled={isProcessing}
-          >
-            <option value={3}>3</option>
-            <option value={4}>4</option>
-            <option value={5}>5</option>
-          </select>
-          
-          <button
-            onClick={startProcessing}
-            disabled={isProcessing || !rowCount}
-            className={`px-4 py-2 rounded ${
-              isProcessing || !rowCount
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-green-600 hover:bg-green-700 text-white'
-            }`}
-          >
-            {isProcessing ? 'Processing...' : 'Start Batch Process'}
+    <div className="bg-card p-6 rounded-lg shadow-md border border-border-color max-w-4xl mx-auto">
+      <h2 className="text-2xl font-bold text-text-primary mb-4">Autonomous Batch Processing</h2>
+
+      <div className="mb-4">
+        <div className="flex justify-between items-center mb-1">
+          <span className="text-sm font-medium text-text-primary">
+            Status: <span className={`font-bold ${status === 'processing' ? 'text-blue-500' : status === 'complete' ? 'text-green-500' : 'text-red-500'}`}>{status}</span>
+          </span>
+          <span className="text-sm font-medium text-text-secondary">{processedFiles} / {filenames.length} files</span>
+        </div>
+        <div className="w-full bg-gray-200 rounded-full h-2.5">
+          <div className="bg-primary h-2.5 rounded-full" style={{ width: `${progressPercentage}%` }}></div>
+        </div>
+      </div>
+
+      <div className="bg-background p-4 rounded-md h-96 overflow-y-auto border border-border-color">
+        <h3 className="text-lg font-semibold text-text-primary mb-2">Logs</h3>
+        <pre className="text-sm text-text-secondary whitespace-pre-wrap">
+          {logs.join('\n')}
+        </pre>
+      </div>
+
+      {status === 'complete' && (
+        <div className="mt-4 text-center">
+          <p className="text-green-600 font-semibold">All files processed successfully!</p>
+          <button onClick={onComplete} className="mt-2 bg-primary text-white px-4 py-2 rounded-md shadow-sm hover:bg-opacity-90">
+            Back to Editor
           </button>
         </div>
-
-        {status && (
-          <div className="mt-4 p-4 bg-blue-50 rounded border">
-            <div className="flex justify-between items-center mb-2">
-              <span className="font-medium">Progress:</span>
-              <span className="text-sm">
-                {status.current_row} / {status.total_rows} rows
-                ({getProgressPercentage()}%)
-              </span>
-            </div>
-            
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div 
-                className="bg-green-600 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${getProgressPercentage()}%` }}
-              ></div>
-            </div>
-            
-            <div className="mt-3 text-sm">
-              <div><strong>Status:</strong> {status.status}</div>
-              {status.current_sanskrit && (
-                <div><strong>Current Row:</strong> {status.current_sanskrit}</div>
-              )}
-              {status.error_message && (
-                <div className="text-red-600"><strong>Error:</strong> {status.error_message}</div>
-              )}
-            </div>
-            
-            {status.status === "completed" && (
-              <div className="mt-3 p-2 bg-green-100 text-green-800 rounded text-sm">
-                ✅ Batch processing completed successfully!
-              </div>
-            )}
-            
-            {status.status === "error" && (
-              <div className="mt-3 p-2 bg-red-100 text-red-800 rounded text-sm">
-                ❌ Batch processing failed. Check console for details.
-              </div>
-            )}
-          </div>
-        )}
-
-        {!rowCount && (
-          <div className="p-3 bg-yellow-50 text-yellow-800 rounded text-sm">
-            ⚠️ No data available. Please upload a CSV file first.
-          </div>
-        )}
-      </div>
+      )}
+       {status === 'error' && (
+        <div className="mt-4 text-center">
+          <p className="text-red-600 font-semibold">An error occurred during processing. Check the logs for details.</p>
+           <button onClick={onComplete} className="mt-2 bg-primary text-white px-4 py-2 rounded-md shadow-sm hover:bg-opacity-90">
+            Back to Editor
+          </button>
+        </div>
+      )}
     </div>
   );
 }
