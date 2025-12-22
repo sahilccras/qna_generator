@@ -104,7 +104,7 @@ export default function Sidebar({
           className="w-full bg-secondary text-text-primary py-2 px-3 rounded-md hover:bg-opacity-90 flex items-center justify-center gap-2 text-sm font-medium"
         >
           <IconZap />
-          Process All Files
+          Dataset Generator
         </button>
       </div>
 
