@@ -56,7 +56,33 @@ export async function getAllData(filename) {
     return res.data;
 }
 
-export async function processBatch(filename) {
-    const res = await api.post(`/batch_process/${filename}`);
+// --- New Batch API ---
+
+export async function startBatchJob(filename, rowIds, targetCount) {
+    const res = await api.post("/api/batch/start", {
+        filename,
+        row_ids: rowIds,
+        target_count: targetCount
+    });
+    return res.data;
+}
+
+export async function listBatchJobs() {
+    const res = await api.get("/api/batch/jobs");
+    return res.data;
+}
+
+export async function getBatchJob(jobId) {
+    const res = await api.get(`/api/batch/${jobId}`);
+    return res.data;
+}
+
+export async function cancelBatchJob(jobId) {
+    const res = await api.post(`/api/batch/cancel/${jobId}`);
+    return res.data;
+}
+
+export async function commitBatchJob(jobId) {
+    const res = await api.post(`/api/batch/${jobId}/commit`);
     return res.data;
 }

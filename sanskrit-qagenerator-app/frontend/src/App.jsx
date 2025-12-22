@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import Sidebar from "./components/Sidebar";
 import ShlokaEditor from "./components/ShlokaEditor";
-import BatchProcessor from "./components/BatchProcessor";
+import InteractiveBatchProcessor from "./components/InteractiveBatchProcessor";
 import { listCsvs, listRows, uploadCSV, downloadCSV, getAllData } from "./api";
 
 export default function App() {
@@ -125,6 +125,7 @@ export default function App() {
 
   const handleBatchComplete = () => {
     fetchCsvs();
+    setShowBatchProcessor(false);
   };
 
   return (
@@ -149,9 +150,9 @@ export default function App() {
             <p>Loading...</p>
           </div>
         ) : showBatchProcessor ? (
-          <BatchProcessor
+          <InteractiveBatchProcessor
             onComplete={handleBatchComplete}
-            filenames={csvs}
+            onExit={() => setShowBatchProcessor(false)}
           />
         ) : selectedRowId !== null ? (
           <ShlokaEditor
